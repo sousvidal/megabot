@@ -1,0 +1,55 @@
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import { cn } from "~/lib/utils";
+import { Bot, User } from "lucide-react";
+
+interface MessageBubbleProps {
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  isStreaming?: boolean;
+}
+
+export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps) {
+  const isUser = role === "user";
+
+  return (
+    <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+      {/* Avatar */}
+      <div
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-full",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-muted-foreground"
+        )}
+      >
+        {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
+      </div>
+
+      {/* Content */}
+      <div
+        className={cn(
+          "max-w-[85%] rounded-2xl px-4 py-3 text-sm",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-foreground"
+        )}
+      >
+        {isUser ? (
+          <p className="whitespace-pre-wrap">{content}</p>
+        ) : content ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-background/50 [&_pre]:p-3 [&_code]:rounded [&_code]:bg-background/50 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{content}</Markdown>
+          </div>
+        ) : isStreaming ? (
+          <div className="flex items-center gap-1">
+            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:0ms]" />
+            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:150ms]" />
+            <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:300ms]" />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
