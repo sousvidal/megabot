@@ -219,7 +219,10 @@ export function useChatMessages(conversationId: string) {
       content: text,
       createdAt: new Date(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => {
+      console.log("[sendMessage] Adding user msg, prev:", prev.length);
+      return [...prev, userMessage];
+    });
 
     const assistantId = `temp-assistant-${Date.now()}`;
     const assistantMessage: Message = {
