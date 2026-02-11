@@ -7,6 +7,7 @@ import { getSystemPrompt } from "~/lib/core/system-prompt";
 import { conversations, messages, tasks, agents } from "~/lib/db/schema";
 import { truncateHistory } from "~/lib/core/chat-handler-utils";
 import type { LLMMessage, ContentBlock } from "~/lib/types";
+import { logger } from "~/lib/logger";
 
 interface AgentSpawnData {
   agentId: string;
@@ -33,6 +34,13 @@ export const runAgent = inngest.createFunction(
   { event: "megabot/agent.spawn" },
   async ({ event, step }) => {
     const data = event.data as AgentSpawnData;
+    const log = logger.child({
+      module: "inngest:run-agent",
+      agentId: data.agentId,
+      taskId: data.taskId,
+    });
+
+    log.info("Agent spawn started");
 
     // --- Step 1: Setup ---
     const setup = await step.run("setup", () => {
@@ -47,6 +55,7 @@ export const runAgent = inngest.createFunction(
         .get();
 
       if (!agent) {
+        log.error({ agentId: data.agentId }, "Agent not found");
         throw new Error(`Agent "${data.agentId}" not found`);
       }
 
@@ -90,6 +99,11 @@ export const runAgent = inngest.createFunction(
         ? (JSON.parse(agent.tools) as string[])
         : [];
 
+      log.info(
+        { agentName: agent.name, conversationId: agentConversationId, toolCount: agentTools.length },
+        "Agent setup complete"
+      );
+
       return {
         agentConversationId,
         agentName: agent.name,
@@ -101,6 +115,7 @@ export const runAgent = inngest.createFunction(
     });
 
     // --- Step 2: Execute the agent ---
+    log.info({ agentName: setup.agentName }, "Agent execution starting");
     const result = await step.run("execute", async () => {
       const { db, modelRouter, toolRegistry, eventBus } = getServer();
 
@@ -116,6 +131,11 @@ export const runAgent = inngest.createFunction(
         conversationId: setup.agentConversationId,
       });
     });
+
+    log.info(
+      { toolCallCount: result.toolCallCount, usage: result.usage, textLength: result.text.length },
+      "Agent execution complete"
+    );
 
     // --- Step 3: Deliver the result ---
     await step.run("deliver-result", async () => {
@@ -144,6 +164,7 @@ export const runAgent = inngest.createFunction(
         .all();
 
       const userMovedOn = newerUserMessages.length > 0;
+      log.debug({ userMovedOn }, "Checked if user moved on");
 
       if (!userMovedOn) {
         // User is still waiting — synthesize a response using the main bot
@@ -213,8 +234,10 @@ export const runAgent = inngest.createFunction(
 
         if (recheck.length > 0) {
           // User moved on between our initial check and now — post notification instead
+          log.info("User moved on during synthesis — posting notification");
           postNotification(db, data, setup.agentName, result.text, now);
         } else {
+          log.info("Synthesizing agent result into conversation");
           // Synthesize response using full AgentRunner (tools available)
           await runner.run({
             systemPrompt,
@@ -225,6 +248,7 @@ export const runAgent = inngest.createFunction(
         }
       } else {
         // User moved on — post a notification message
+        log.info("User moved on — posting notification");
         postNotification(db, data, setup.agentName, result.text, now);
       }
 
@@ -255,6 +279,7 @@ export const runAgent = inngest.createFunction(
       );
     });
 
+    log.info("Agent spawn completed successfully");
     return { taskId: data.taskId, status: "completed" };
   }
 );

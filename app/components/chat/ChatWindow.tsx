@@ -17,49 +17,14 @@ interface ChatWindowProps {
   conversationId: string;
   initialMessages: Message[];
   initialMessage?: string;
+  isProcessing?: boolean;
   onStreamComplete?: () => void;
 }
 
-export function ChatWindow({
-  conversationId,
-  initialMessages,
-  initialMessage,
-  onStreamComplete,
-}: ChatWindowProps) {
-  const {
-    messages,
-    setMessages,
-    isStreaming,
-    error,
-    setError,
-    sendMessage: sendChatMessage,
-  } = useChatMessages(conversationId);
-
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const initialMessageSent = useRef(false);
-
-  useEffect(() => {
-    setMessages(initialMessages);
-    setError(null);
-  }, [initialMessages, setMessages, setError]);
-
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
-
-  useEffect(() => {
-    if (initialMessage && !initialMessageSent.current) {
-      initialMessageSent.current = true;
-      void sendChatMessage(initialMessage, onStreamComplete);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMessage]);
-
-  // Subscribe to notification SSE for background agent results
+function useNotificationSubscription(
+  conversationId: string,
+  onStreamComplete?: () => void
+) {
   useEffect(() => {
     const eventSource = new EventSource("/api/notifications");
 
@@ -78,10 +43,11 @@ export function ChatWindow({
               ? data.conversationId
               : undefined;
           
-          // If the event is for our conversation, trigger a revalidation
           if (
             conversationIdValue === conversationId &&
-            (data.type === "agent.completed" || data.type === "agent.error")
+            (data.type === "agent.completed" ||
+              data.type === "agent.error" ||
+              data.type === "chat.completed")
           ) {
             onStreamComplete?.();
           }
@@ -95,6 +61,90 @@ export function ChatWindow({
       eventSource.close();
     };
   }, [conversationId, onStreamComplete]);
+}
+
+function useSyncInitialMessages(
+  initialMessages: Message[],
+  isStreaming: boolean,
+  setMessages: (messages: Message[]) => void,
+  setError: (error: string | null) => void
+) {
+  const prevInitialMessages = useRef<Message[]>([]);
+
+  useEffect(() => {
+    const messagesChanged = initialMessages.length !== prevInitialMessages.current.length ||
+      initialMessages.some((msg, i) => msg.id !== prevInitialMessages.current[i]?.id);
+    
+    console.warn("[ChatWindow] initialMessages effect:", 
+      "count=", initialMessages.length, 
+      "isStreaming=", isStreaming,
+      "changed=", messagesChanged
+    );
+    
+    if (messagesChanged && !isStreaming) {
+      console.warn("[ChatWindow] SYNCING initialMessages to state");
+      setMessages(initialMessages);
+      setError(null);
+      prevInitialMessages.current = initialMessages;
+    } else {
+      console.warn("[ChatWindow] SKIPPING sync:", 
+        "changed=", messagesChanged, 
+        "isStreaming=", isStreaming
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessages, isStreaming]);
+}
+
+export function ChatWindow({
+  conversationId,
+  initialMessages,
+  initialMessage,
+  isProcessing,
+  onStreamComplete,
+}: ChatWindowProps) {
+  const {
+    messages,
+    setMessages,
+    isStreaming,
+    error,
+    setError,
+    sendMessage: sendChatMessage,
+  } = useChatMessages(conversationId);
+
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const initialMessageSent = useRef(false);
+
+  useSyncInitialMessages(initialMessages, isStreaming, setMessages, setError);
+
+  useEffect(() => {
+    console.warn("[ChatWindow] RENDER:", 
+      "msgCount=", messages.length,
+      "ids=", messages.map(m => m.id).join(","),
+      "isStreaming=", isStreaming, 
+      "isProcessing=", isProcessing
+    );
+  }, [messages, isStreaming, isProcessing]);
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    console.log("[ChatWindow] initialMessage effect:", { initialMessage, sent: initialMessageSent.current });
+    if (initialMessage && !initialMessageSent.current) {
+      initialMessageSent.current = true;
+      window.history.replaceState({}, "", window.location.pathname);
+      void sendChatMessage(initialMessage, onStreamComplete);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessage]);
+
+  useNotificationSubscription(conversationId, onStreamComplete);
 
   function handleSendMessage(text: string) {
     void sendChatMessage(text, onStreamComplete);
@@ -105,6 +155,7 @@ export function ChatWindow({
       <MessageList
         messages={messages}
         isStreaming={isStreaming}
+        isProcessing={isProcessing}
         error={error}
         scrollRef={bottomRef}
       />

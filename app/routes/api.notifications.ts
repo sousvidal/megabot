@@ -1,5 +1,8 @@
 import { getServer } from "~/lib/server/init";
 import type { Route } from "./+types/api.notifications";
+import { logger } from "~/lib/logger";
+
+const log = logger.child({ module: "api.notifications" });
 
 /**
  * SSE endpoint that pushes real-time notifications to the frontend.
@@ -9,6 +12,8 @@ import type { Route } from "./+types/api.notifications";
 export function loader({ request }: Route.LoaderArgs) {
   const server = getServer();
   const encoder = new TextEncoder();
+
+  log.debug("SSE notification stream connected");
 
   const stream = new ReadableStream({
     start(controller) {
@@ -28,7 +33,8 @@ export function loader({ request }: Route.LoaderArgs) {
         if (
           event.type !== "agent.completed" &&
           event.type !== "agent.error" &&
-          event.type !== "agent.spawned"
+          event.type !== "agent.spawned" &&
+          event.type !== "chat.completed"
         ) {
           return;
         }
@@ -49,6 +55,7 @@ export function loader({ request }: Route.LoaderArgs) {
 
       // Clean up on disconnect
       request.signal.addEventListener("abort", () => {
+        log.debug("SSE notification stream disconnected");
         clearInterval(heartbeatInterval);
         unsubscribe();
         try {

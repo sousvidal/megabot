@@ -5,6 +5,7 @@ import type { ModelRouter } from "./model-router";
 import type { ToolRegistry } from "./tool-registry";
 import type { EventBus } from "./event-bus";
 import { safeParseArgs } from "./chat-handler-utils";
+import { logger } from "~/lib/logger";
 import type {
   LLMChunk,
   LLMMessage,
@@ -20,6 +21,7 @@ import type {
 export const BASE_TOOL_NAMES = [
   "search_tools",
   "get_current_time",
+  "run_command",
   "create_agent",
   "list_agents",
   "spawn_agent",
@@ -68,6 +70,17 @@ export class AgentRunner {
       tier: params.tier,
       modelId: params.modelId,
     });
+
+    const log = logger.child({
+      module: "agent-runner",
+      ...(params.conversationId && { conversationId: params.conversationId }),
+      ...(params.agentId && { agentId: params.agentId }),
+    });
+
+    log.info(
+      { model: model.id, messageCount: params.initialMessages.length, toolCount: params.tools.length },
+      "Agent stream started"
+    );
 
     const currentMessages: LLMMessage[] = [...params.initialMessages];
     const totalUsage = { inputTokens: 0, outputTokens: 0 };
@@ -142,6 +155,14 @@ export class AgentRunner {
     let hasToolCallsPending = false;
     let hadError = false;
 
+    const log = logger.child({
+      module: "agent-runner",
+      ...(params.conversationId && { conversationId: params.conversationId }),
+      ...(params.agentId && { agentId: params.agentId }),
+    });
+
+    log.debug({ model: model.id, messageCount: currentMessages.length }, "LLM call started");
+
     try {
       const llmStream = plugin.chat({
         model,
@@ -170,6 +191,7 @@ export class AgentRunner {
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      log.error({ error: errorMsg, model: model.id }, "LLM call failed");
       this.eventBus.emit("llm.error", source, { error: errorMsg, model: model.id }, { ...eventOpts, level: "error" });
       yield { type: "error" as const, error: errorMsg };
       hadError = true;
@@ -225,6 +247,15 @@ export class AgentRunner {
     totalUsage: { inputTokens: number; outputTokens: number },
     source: string,
   ): void {
+    const log = logger.child({
+      module: "agent-runner",
+      ...(params.conversationId && { conversationId: params.conversationId }),
+      ...(params.agentId && { agentId: params.agentId }),
+    });
+    log.info(
+      { model: modelId, usage: totalUsage, contentLength: fullText.length },
+      "Agent stream completed"
+    );
     if (params.conversationId) {
       this.persistMessage(params.conversationId, {
         role: "assistant",
@@ -290,6 +321,13 @@ export class AgentRunner {
       agentId: params.agentId,
     };
 
+    const log = logger.child({
+      module: "agent-runner",
+      tool: tc.name,
+      ...(params.conversationId && { conversationId: params.conversationId }),
+      ...(params.agentId && { agentId: params.agentId }),
+    });
+
     yield {
       type: "tool_executing" as const,
       toolCallId: tc.id,
@@ -298,12 +336,15 @@ export class AgentRunner {
 
     this.eventBus.emit("tool.called", source, { tool: tc.name, args: tc.args }, eventOpts);
 
+    log.debug("Tool executing");
+    const startTime = Date.now();
     const parsedArgs = safeParseArgs(tc.args);
     const result = await this.toolRegistry.execute(tc.name, parsedArgs, {
       conversationId: params.conversationId,
       agentId: params.agentId,
       messageId: params.messageId,
     });
+    const durationMs = Date.now() - startTime;
 
     const resultContent = result.success
       ? typeof result.data === "string"
@@ -318,6 +359,12 @@ export class AgentRunner {
       toolName: tc.name,
       toolResult: { content: resultContent, isError },
     };
+
+    if (isError) {
+      log.error({ durationMs, error: resultContent }, "Tool failed");
+    } else {
+      log.debug({ durationMs }, "Tool completed");
+    }
 
     this.eventBus.emit(
       result.success ? "tool.result" : "tool.error",

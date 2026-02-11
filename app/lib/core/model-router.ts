@@ -1,5 +1,8 @@
 import type { PluginRegistry } from "./plugin-registry";
 import type { LLMPlugin, ModelDefinition, ModelTier } from "~/lib/types";
+import { logger } from "~/lib/logger";
+
+const log = logger.child({ module: "model-router" });
 
 export interface RouteResult {
   plugin: LLMPlugin;
@@ -36,6 +39,7 @@ export class ModelRouter {
         if (providerId && plugin.id !== providerId) continue;
         const model = plugin.models.find((m) => m.id === modelId);
         if (model) {
+          log.debug({ plugin: plugin.id, model: model.id }, "Routed by model ID");
           return { plugin, model };
         }
       }
@@ -47,6 +51,7 @@ export class ModelRouter {
     for (const plugin of llmPlugins) {
       const model = plugin.models.find((m) => m.tier === targetTier);
       if (model) {
+        log.debug({ plugin: plugin.id, model: model.id, tier: targetTier }, "Routed by tier");
         return { plugin, model };
       }
     }
@@ -61,6 +66,10 @@ export class ModelRouter {
       throw new Error(`LLM plugin "${fallbackPlugin.id}" has no models registered`);
     }
 
+    log.warn(
+      { plugin: fallbackPlugin.id, model: fallbackModel.id, requestedTier: targetTier },
+      "Fallback routing used"
+    );
     return { plugin: fallbackPlugin, model: fallbackModel };
   }
 }

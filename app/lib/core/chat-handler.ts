@@ -8,6 +8,7 @@ import type { EventBus } from "./event-bus";
 import { AgentRunner, BASE_TOOL_NAMES } from "./agent-runner";
 import { getSystemPrompt } from "./system-prompt";
 import { truncateHistory } from "./chat-handler-utils";
+import { logger } from "~/lib/logger";
 import type {
   LLMChunk,
   LLMMessage,
@@ -47,7 +48,10 @@ export class ChatHandler {
       this.setupConversation(conversationId, message);
     conversationId = convId;
 
+    const log = logger.child({ module: "chat-handler", conversationId });
+
     const llmMessages = this.loadHistory(conversationId);
+    log.debug({ messageCount: llmMessages.length }, "History loaded");
     const { plugin, model } = this.modelRouter.route({ tier, modelId });
 
     this.eventBus.emit(
@@ -96,13 +100,17 @@ export class ChatHandler {
       .where(eq(conversations.id, conversationId))
       .get();
 
+    const log = logger.child({ module: "chat-handler", conversationId });
+
     if (existingConvo) {
+      log.debug("Continuing existing conversation");
       this.db
         .update(conversations)
         .set({ updatedAt: now })
         .where(eq(conversations.id, conversationId))
         .run();
     } else {
+      log.info("New conversation created");
       this.db
         .insert(conversations)
         .values({
