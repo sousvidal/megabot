@@ -14,7 +14,7 @@ export type {
 export { getMessageText } from "./llm";
 
 // Plugin types - core plugin interfaces
-export type { LLMPlugin, Plugin } from "./plugin";
+export type { LLMPlugin, ToolPlugin, Plugin } from "./plugin";
 
 // Tool types - commonly used for tool implementations
 export type { ToolContext, ToolResult, Tool } from "./tool";

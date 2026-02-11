@@ -1,7 +1,8 @@
-import type { Tool, ToolResult } from "~/lib/types";
+import { eq, like } from "drizzle-orm";
+import type { Tool, ToolResult, ToolPlugin } from "~/lib/types";
 import type { AppDatabase } from "~/lib/db";
 import { config } from "~/lib/db/schema";
-import { eq, like } from "drizzle-orm";
+import type { Logger } from "~/lib/logger";
 
 const MEMORY_PREFIX = "memory:";
 
@@ -71,16 +72,29 @@ function executeMemoryRecall(
   };
 }
 
-/**
- * Creates the memory_store and memory_recall tools.
- * Both need access to the database to persist/query memories.
- */
-export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool } {
+// ---------------------------------------------------------------------------
+// Plugin factory
+// ---------------------------------------------------------------------------
+
+export function createMemoryPlugin(
+  db: AppDatabase,
+  logger: Logger
+): ToolPlugin {
+  const log = logger.child({ plugin: "memory" });
+
   const store: Tool = {
     name: "memory_store",
     description:
       "Store a piece of information for later recall. Use this to remember facts, user preferences, important details, or anything that should persist across conversations. Keys should be descriptive (e.g. 'user_favorite_color', 'project_deadline').",
-    keywords: ["remember", "note", "save", "knowledge", "fact", "persist", "preference"],
+    keywords: [
+      "remember",
+      "note",
+      "save",
+      "knowledge",
+      "fact",
+      "persist",
+      "preference",
+    ],
     parameters: {
       type: "object",
       properties: {
@@ -97,14 +111,23 @@ export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool 
       required: ["key", "value"],
     },
     permissions: "write",
-    execute: (params) => executeMemoryStore(db, params as Record<string, unknown>),
+    execute: (params) =>
+      executeMemoryStore(db, params as Record<string, unknown>),
   };
 
   const recall: Tool = {
     name: "memory_recall",
     description:
       "Search stored memories by keyword. Returns all memories whose key matches the query. Use this to recall previously stored information like user preferences, names, dates, or facts.",
-    keywords: ["remember", "note", "lookup", "knowledge", "fact", "preference", "retrieve"],
+    keywords: [
+      "remember",
+      "note",
+      "lookup",
+      "knowledge",
+      "fact",
+      "preference",
+      "retrieve",
+    ],
     parameters: {
       type: "object",
       properties: {
@@ -117,8 +140,23 @@ export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool 
       required: [],
     },
     permissions: "read",
-    execute: (params) => executeMemoryRecall(db, params as Record<string, unknown>),
+    execute: (params) =>
+      executeMemoryRecall(db, params as Record<string, unknown>),
   };
 
-  return { store, recall };
+  return {
+    id: "memory",
+    name: "Memory",
+    type: "tool",
+    description: "Persistent key-value memory store",
+    tools: [store, recall],
+    afterToolCall: (toolName, params, _context, result) => {
+      const { key, query } = params as { key?: string; query?: string };
+      if (toolName === "memory_store" && result.success) {
+        log.debug({ key }, "Memory stored");
+      } else if (toolName === "memory_recall") {
+        log.debug({ query, found: result.success }, "Memory recalled");
+      }
+    },
+  };
 }

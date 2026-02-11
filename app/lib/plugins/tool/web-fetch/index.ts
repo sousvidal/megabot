@@ -1,13 +1,23 @@
-import type { Tool } from "~/lib/types";
+import type { Tool, ToolPlugin } from "~/lib/types";
+import type { Logger } from "~/lib/logger";
 
 const DEFAULT_MAX_LENGTH = 50_000;
 const FETCH_TIMEOUT_MS = 15_000;
 
-export const webFetchTool: Tool = {
+const webFetchTool: Tool = {
   name: "web_fetch",
   description:
     "Fetch the content of a URL and return the response body as text. Useful for reading web pages, public APIs, JSON endpoints, or downloading text content. Returns the raw response body truncated to a maximum length.",
-  keywords: ["url", "website", "http", "download", "api", "webpage", "internet", "browse"],
+  keywords: [
+    "url",
+    "website",
+    "http",
+    "download",
+    "api",
+    "webpage",
+    "internet",
+    "browse",
+  ],
   parameters: {
     type: "object",
     properties: {
@@ -70,3 +80,27 @@ export const webFetchTool: Tool = {
     }
   },
 };
+
+// ---------------------------------------------------------------------------
+// Plugin factory
+// ---------------------------------------------------------------------------
+
+export function createWebFetchPlugin(logger: Logger): ToolPlugin {
+  const log = logger.child({ plugin: "web-fetch" });
+
+  return {
+    id: "web-fetch",
+    name: "Web Fetch",
+    type: "tool",
+    description: "Fetch content from URLs",
+    tools: [webFetchTool],
+    afterToolCall: (_toolName, params, _context, result) => {
+      const { url } = params as { url?: string };
+      if (result.success) {
+        log.debug({ url }, "URL fetched successfully");
+      } else {
+        log.warn({ url, error: result.error }, "URL fetch failed");
+      }
+    },
+  };
+}

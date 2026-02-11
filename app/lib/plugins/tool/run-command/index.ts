@@ -1,5 +1,6 @@
 import { exec } from "node:child_process";
-import type { Tool } from "~/lib/types";
+import type { Tool, ToolPlugin } from "~/lib/types";
+import type { Logger } from "~/lib/logger";
 
 /**
  * Allowlist of safe, read-only commands.
@@ -49,7 +50,7 @@ const ALLOWED_COMMANDS = new Set([
 const MAX_OUTPUT_CHARS = 50_000;
 const EXEC_TIMEOUT_MS = 30_000;
 
-export const runCommandTool: Tool = {
+const runCommandTool: Tool = {
   name: "run_command",
   description:
     "Execute a shell command on the local machine and return stdout/stderr. Restricted to read-only commands (ls, cat, grep, find, ps, df, etc.). Use this to explore the file system, inspect files, search for content, and gather system information.",
@@ -99,17 +100,19 @@ export const runCommandTool: Tool = {
     }
 
     // Strip safe stderr redirections before checking dangerous patterns
-    const sanitised = command.replace(/2>\s*\/dev\/null/g, "").replace(/2>&1/g, "");
+    const sanitised = command
+      .replace(/2>\s*\/dev\/null/g, "")
+      .replace(/2>&1/g, "");
 
     // Block obvious dangerous patterns even with allowed commands
     const dangerous = [
-      />\s*\//,    // redirect to absolute path
-      />\s*~/,     // redirect to home
-      /`[^`]*`/,   // backtick subshells
-      /\$\(/,       // command substitution
-      /;\s*/,        // command chaining with semicolons
-      /&&/,          // command chaining with &&
-      /\|\|/,        // command chaining with ||
+      />\s*\//, // redirect to absolute path
+      />\s*~/, // redirect to home
+      /`[^`]*`/, // backtick subshells
+      /\$\(/, // command substitution
+      /;\s*/, // command chaining with semicolons
+      /&&/, // command chaining with &&
+      /\|\|/, // command chaining with ||
     ];
 
     for (const pattern of dangerous) {
@@ -122,30 +125,31 @@ export const runCommandTool: Tool = {
     }
 
     try {
-      const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
-        (resolve, reject) => {
-          exec(
-            command,
-            {
-              encoding: "utf-8",
-              timeout: EXEC_TIMEOUT_MS,
-              maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-            },
-            (error, stdout, stderr) => {
-              if (error) {
-                reject(
-                  Object.assign(error, {
-                    stdout: stdout ?? "",
-                    stderr: stderr ?? "",
-                  })
-                );
-              } else {
-                resolve({ stdout: stdout ?? "", stderr: stderr ?? "" });
-              }
+      const { stdout } = await new Promise<{
+        stdout: string;
+        stderr: string;
+      }>((resolve, reject) => {
+        exec(
+          command,
+          {
+            encoding: "utf-8",
+            timeout: EXEC_TIMEOUT_MS,
+            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+          },
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(
+                Object.assign(error, {
+                  stdout: stdout ?? "",
+                  stderr: stderr ?? "",
+                })
+              );
+            } else {
+              resolve({ stdout: stdout ?? "", stderr: stderr ?? "" });
             }
-          );
-        }
-      );
+          }
+        );
+      });
 
       let output = stdout;
       const truncated = output.length > MAX_OUTPUT_CHARS;
@@ -155,10 +159,17 @@ export const runCommandTool: Tool = {
 
       return {
         success: true,
-        data: truncated ? `${output}\n[Truncated to ${MAX_OUTPUT_CHARS} chars]` : output,
+        data: truncated
+          ? `${output}\n[Truncated to ${MAX_OUTPUT_CHARS} chars]`
+          : output,
       };
     } catch (err) {
-      if (err && typeof err === "object" && "stdout" in err && "stderr" in err) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "stdout" in err &&
+        "stderr" in err
+      ) {
         const execErr = err as {
           stdout: string;
           stderr: string;
@@ -198,3 +209,29 @@ export const runCommandTool: Tool = {
     }
   },
 };
+
+// ---------------------------------------------------------------------------
+// Plugin factory
+// ---------------------------------------------------------------------------
+
+export function createRunCommandPlugin(logger: Logger): ToolPlugin {
+  const log = logger.child({ plugin: "run-command" });
+
+  return {
+    id: "run-command",
+    name: "Run Command",
+    type: "tool",
+    description: "Execute allowlisted shell commands",
+    tools: [runCommandTool],
+    beforeToolCall: (_toolName, params) => {
+      const { command } = params as { command?: string };
+      log.debug({ command }, "Executing command");
+    },
+    afterToolCall: (_toolName, params, _context, result) => {
+      const { command } = params as { command?: string };
+      if (!result.success) {
+        log.warn({ command, error: result.error }, "Command failed");
+      }
+    },
+  };
+}

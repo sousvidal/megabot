@@ -4,23 +4,17 @@ import type { AppDatabase } from "~/lib/db";
 import { agents, tasks } from "~/lib/db/schema";
 import type { ToolRegistry } from "~/lib/core/tool-registry";
 import { inngest } from "~/lib/inngest/client";
-import type { Tool } from "~/lib/types";
+import type { Tool, ToolPlugin } from "~/lib/types";
+import type { Logger } from "~/lib/logger";
 
-/**
- * Create the agent management tools: create_agent, list_agents, spawn_agent.
- */
-export function createAgentTools(
+// ---------------------------------------------------------------------------
+// create_agent
+// ---------------------------------------------------------------------------
+
+function buildCreateAgentTool(
   db: AppDatabase,
   toolRegistry: ToolRegistry
-): { createAgent: Tool; listAgents: Tool; spawnAgent: Tool } {
-  return {
-    createAgent: buildCreateAgentTool(db, toolRegistry),
-    listAgents: buildListAgentsTool(db),
-    spawnAgent: buildSpawnAgentTool(db),
-  };
-}
-
-function buildCreateAgentTool(db: AppDatabase, toolRegistry: ToolRegistry): Tool {
+): Tool {
   return {
     name: "create_agent",
     description:
@@ -32,7 +26,8 @@ function buildCreateAgentTool(db: AppDatabase, toolRegistry: ToolRegistry): Tool
       properties: {
         name: {
           type: "string",
-          description: "Short, descriptive agent name (e.g. 'research-agent')",
+          description:
+            "Short, descriptive agent name (e.g. 'research-agent')",
         },
         prompt: {
           type: "string",
@@ -98,6 +93,10 @@ function buildCreateAgentTool(db: AppDatabase, toolRegistry: ToolRegistry): Tool
   };
 }
 
+// ---------------------------------------------------------------------------
+// list_agents
+// ---------------------------------------------------------------------------
+
 function buildListAgentsTool(db: AppDatabase): Tool {
   return {
     name: "list_agents",
@@ -122,7 +121,9 @@ function buildListAgentsTool(db: AppDatabase): Tool {
         ? db
             .select()
             .from(agents)
-            .where(eq(agents.createdBy, createdBy as "system" | "bot" | "user"))
+            .where(
+              eq(agents.createdBy, createdBy as "system" | "bot" | "user")
+            )
             .all()
         : db.select().from(agents).all();
 
@@ -141,6 +142,10 @@ function buildListAgentsTool(db: AppDatabase): Tool {
   };
 }
 
+// ---------------------------------------------------------------------------
+// spawn_agent
+// ---------------------------------------------------------------------------
+
 function buildSpawnAgentTool(db: AppDatabase): Tool {
   return {
     name: "spawn_agent",
@@ -153,7 +158,8 @@ function buildSpawnAgentTool(db: AppDatabase): Tool {
       properties: {
         agentId: {
           type: "string",
-          description: "ID of the agent to spawn (from create_agent or list_agents)",
+          description:
+            "ID of the agent to spawn (from create_agent or list_agents)",
         },
         input: {
           type: "string",
@@ -165,7 +171,10 @@ function buildSpawnAgentTool(db: AppDatabase): Tool {
     },
     permissions: "write",
     async execute(params, context) {
-      const { agentId, input } = params as { agentId: string; input: string };
+      const { agentId, input } = params as {
+        agentId: string;
+        input: string;
+      };
 
       const agent = db
         .select({ id: agents.id, name: agents.name })
@@ -181,11 +190,17 @@ function buildSpawnAgentTool(db: AppDatabase): Tool {
       }
 
       if (!context.conversationId) {
-        return { success: false, error: "Cannot spawn agent outside of a conversation context." };
+        return {
+          success: false,
+          error: "Cannot spawn agent outside of a conversation context.",
+        };
       }
 
       if (!context.messageId) {
-        return { success: false, error: "Missing message context for agent spawn." };
+        return {
+          success: false,
+          error: "Missing message context for agent spawn.",
+        };
       }
 
       const taskId = nanoid();
@@ -222,6 +237,44 @@ function buildSpawnAgentTool(db: AppDatabase): Tool {
           message: `Agent "${agent.name}" has been dispatched. It will work in the background and deliver results when done.`,
         },
       };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Plugin factory
+// ---------------------------------------------------------------------------
+
+export function createAgentsPlugin(
+  db: AppDatabase,
+  toolRegistry: ToolRegistry,
+  logger: Logger
+): ToolPlugin {
+  const log = logger.child({ plugin: "agents" });
+
+  return {
+    id: "agents",
+    name: "Agents",
+    type: "tool",
+    description: "Create, list, and spawn background agents",
+    tools: [
+      buildCreateAgentTool(db, toolRegistry),
+      buildListAgentsTool(db),
+      buildSpawnAgentTool(db),
+    ],
+    afterToolCall: (toolName, params, _context, result) => {
+      if (toolName === "create_agent" && result.success) {
+        const { name } = params as { name?: string };
+        log.info({ agentName: name }, "Agent created");
+      } else if (toolName === "spawn_agent" && result.success) {
+        const { agentId } = params as { agentId?: string };
+        log.info({ agentId }, "Agent spawned");
+      } else if (!result.success) {
+        log.warn(
+          { tool: toolName, error: result.error },
+          "Agent tool failed"
+        );
+      }
     },
   };
 }

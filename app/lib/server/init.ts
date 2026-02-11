@@ -4,17 +4,16 @@ import { ToolRegistry } from "~/lib/core/tool-registry";
 import { ModelRouter } from "~/lib/core/model-router";
 import { EventBus } from "~/lib/core/event-bus";
 import { ChatStreamManager } from "~/lib/core/chat-stream-manager";
-import { createAnthropicPlugin } from "~/lib/plugins/anthropic";
 import { logger } from "~/lib/logger";
 import type { Logger } from "~/lib/logger";
-import {
-  getCurrentTimeTool,
-  createSearchToolsTool,
-  webFetchTool,
-  runCommandTool,
-  createMemoryTools,
-  createAgentTools,
-} from "~/lib/tools";
+
+// Plugins
+import { createAnthropicPlugin } from "~/lib/plugins/llm/anthropic";
+import { createSystemPlugin } from "~/lib/plugins/tool/system";
+import { createWebFetchPlugin } from "~/lib/plugins/tool/web-fetch";
+import { createRunCommandPlugin } from "~/lib/plugins/tool/run-command";
+import { createMemoryPlugin } from "~/lib/plugins/tool/memory";
+import { createAgentsPlugin } from "~/lib/plugins/tool/agents";
 
 export interface MegaBotServer {
   db: AppDatabase;
@@ -40,8 +39,8 @@ export function getServer(): MegaBotServer {
     const db = createDatabase(dbPath);
     logger.info({ dbPath }, "Database initialized");
 
-    const pluginRegistry = new PluginRegistry();
     const toolRegistry = new ToolRegistry();
+    const pluginRegistry = new PluginRegistry(toolRegistry);
     const eventBus = new EventBus();
 
     // Register LLM plugins
@@ -53,27 +52,16 @@ export function getServer(): MegaBotServer {
       logger.warn("ANTHROPIC_API_KEY not set — no LLM provider available");
     }
 
-    // Register tools
-    toolRegistry.register(getCurrentTimeTool, "system");
-    toolRegistry.register(createSearchToolsTool(toolRegistry), "system");
-    toolRegistry.register(webFetchTool, "system");
-    toolRegistry.register(runCommandTool, "system");
-
-    const { store, recall } = createMemoryTools(db);
-    toolRegistry.register(store, "system");
-    toolRegistry.register(recall, "system");
-
-    const { createAgent, listAgents, spawnAgent } = createAgentTools(
-      db,
-      toolRegistry
-    );
-    toolRegistry.register(createAgent, "system");
-    toolRegistry.register(listAgents, "system");
-    toolRegistry.register(spawnAgent, "system");
+    // Register tool plugins
+    pluginRegistry.register(createSystemPlugin(toolRegistry, logger));
+    pluginRegistry.register(createWebFetchPlugin(logger));
+    pluginRegistry.register(createRunCommandPlugin(logger));
+    pluginRegistry.register(createMemoryPlugin(db, logger));
+    pluginRegistry.register(createAgentsPlugin(db, toolRegistry, logger));
 
     logger.info(
       { toolCount: toolRegistry.getAll().length },
-      "Tools registered"
+      "Tool plugins registered"
     );
 
     const modelRouter = new ModelRouter(pluginRegistry);
