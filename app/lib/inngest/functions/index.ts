@@ -1,3 +1,3 @@
-import { backgroundTask } from "./background-task";
+import { runAgent } from "./run-agent";
 
-export const inngestFunctions = [backgroundTask];
+export const inngestFunctions = [runAgent];

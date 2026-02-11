@@ -54,13 +54,50 @@ export function ChatWindow({
   useEffect(() => {
     if (initialMessage && !initialMessageSent.current) {
       initialMessageSent.current = true;
-      sendChatMessage(initialMessage, onStreamComplete);
+      void sendChatMessage(initialMessage, onStreamComplete);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMessage]);
 
+  // Subscribe to notification SSE for background agent results
+  useEffect(() => {
+    const eventSource = new EventSource("/api/notifications");
+
+    eventSource.onmessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data as string) as unknown;
+        
+        if (
+          data &&
+          typeof data === "object" &&
+          "type" in data &&
+          typeof data.type === "string"
+        ) {
+          const conversationIdValue =
+            "conversationId" in data && typeof data.conversationId === "string"
+              ? data.conversationId
+              : undefined;
+          
+          // If the event is for our conversation, trigger a revalidation
+          if (
+            conversationIdValue === conversationId &&
+            (data.type === "agent.completed" || data.type === "agent.error")
+          ) {
+            onStreamComplete?.();
+          }
+        }
+      } catch {
+        // Ignore parse errors (e.g. heartbeat comments)
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [conversationId, onStreamComplete]);
+
   function handleSendMessage(text: string) {
-    sendChatMessage(text, onStreamComplete);
+    void sendChatMessage(text, onStreamComplete);
   }
 
   return (

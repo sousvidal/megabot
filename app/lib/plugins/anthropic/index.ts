@@ -96,43 +96,60 @@ function mapMessages(messages: LLMMessage[]): Anthropic.MessageParam[] {
 
 type ToolInputBuffer = { id: string; name: string; json: string };
 
+interface MessageStream extends AsyncIterable<Anthropic.MessageStreamEvent> {
+  finalMessage(): Promise<Anthropic.Message>;
+}
+
 async function* processAnthropicStream(
-  stream: Anthropic.MessageStream,
+  stream: MessageStream,
   toolInputBuffers: Map<number, ToolInputBuffer>
 ): AsyncGenerator<LLMChunk> {
   for await (const event of stream) {
     switch (event.type) {
-      case "content_block_start":
-        if (event.content_block.type === "tool_use") {
-          const block = event.content_block;
+      case "content_block_start": {
+        const block = event.content_block;
+        if (block.type === "tool_use") {
+          const toolUseBlock = block as Anthropic.ContentBlock & {
+            type: "tool_use";
+            id: string;
+            name: string;
+          };
           toolInputBuffers.set(event.index, {
-            id: block.id,
-            name: block.name,
+            id: toolUseBlock.id,
+            name: toolUseBlock.name,
             json: "",
           });
           yield {
             type: "tool_call_start",
-            toolCallId: block.id,
-            toolName: block.name,
+            toolCallId: toolUseBlock.id,
+            toolName: toolUseBlock.name,
           };
         }
         break;
+      }
 
-      case "content_block_delta":
-        if (event.delta.type === "text_delta") {
-          yield { type: "text", text: event.delta.text };
-        } else if (event.delta.type === "input_json_delta") {
+      case "content_block_delta": {
+        const delta = event.delta;
+        if (delta.type === "text_delta") {
+          const textDelta = delta as { type: "text_delta"; text: string };
+          yield { type: "text", text: textDelta.text };
+        } else if (delta.type === "input_json_delta") {
+          const jsonDelta = delta as {
+            type: "input_json_delta";
+            partial_json: string;
+          };
           const buffer = toolInputBuffers.get(event.index);
           if (buffer) {
-            buffer.json += event.delta.partial_json;
+            buffer.json += jsonDelta.partial_json;
             yield {
               type: "tool_call_delta",
               toolCallId: buffer.id,
-              text: event.delta.partial_json,
+              text: jsonDelta.partial_json,
             };
           }
         }
         break;
+      }
 
       case "content_block_stop": {
         const buffer = toolInputBuffers.get(event.index);
@@ -148,11 +165,13 @@ async function* processAnthropicStream(
         break;
       }
 
-      case "message_delta":
-        if (event.delta.stop_reason === "tool_use") {
+      case "message_delta": {
+        const delta = event.delta as { stop_reason?: string };
+        if (delta.stop_reason === "tool_use") {
           yield { type: "tool_calls_pending" };
         }
         break;
+      }
     }
   }
 

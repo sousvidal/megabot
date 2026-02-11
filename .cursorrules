@@ -34,6 +34,7 @@
 - Follow conventional commit format if established in the repository
 - If there are multiple (unrelated) features in one commit, consider splitting it up into several commits
 - **NEVER** bypass git hooks, address the issues or ask the user for input
+- **NEVER** attribute yourself (Cursor) as Co-author
 
 ### Code Quality
 - Review all code changes at task completion for:

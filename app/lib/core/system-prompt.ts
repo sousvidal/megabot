@@ -12,14 +12,20 @@ export function getSystemPrompt(context?: SystemPromptContext): string {
 
   const hasTools = context?.tools && context.tools.length > 0;
 
-  const toolSection = hasTools
+  const toolSection = hasTools && context.tools
     ? `
 
-You have tools available to help you accomplish tasks. You always have access to: ${context!.tools!.join(", ")}.
+You have tools available to help you accomplish tasks. You always have access to: ${context.tools.join(", ")}.
 
 When the user asks you to do something that might require a capability you don't see — like fetching a webpage, running a command, or storing information — use the search_tools tool to discover what's available. Don't say you can't do something without checking first.
 
-Use tools proactively. If the user asks what time it is, use get_current_time. If a task could benefit from a tool, use it rather than guessing.`
+Use tools proactively. If the user asks what time it is, use get_current_time. If a task could benefit from a tool, use it rather than guessing.
+
+For complex or long-running tasks, you can create and spawn background agents:
+1. Use create_agent to define an agent with a specific prompt and tool set
+2. Use spawn_agent to run it in the background — it will work independently and deliver results when done
+3. Use list_agents to see existing agent definitions
+Only spawn agents for tasks that genuinely benefit from background execution (research, multi-step analysis, etc.). For simple tasks, just handle them directly.`
     : "";
 
   return `You are MegaBot, a capable and helpful AI personal assistant.

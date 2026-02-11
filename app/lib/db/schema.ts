@@ -6,6 +6,7 @@ export const conversations = sqliteTable("conversations", {
   title: text("title"),
   pluginId: text("plugin_id"),
   channelId: text("channel_id"),
+  agentId: text("agent_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -68,6 +69,8 @@ export const tasks = sqliteTable("tasks", {
   result: text("result"), // JSON string
   agentId: text("agent_id").references(() => agents.id),
   conversationId: text("conversation_id").references(() => conversations.id),
+  originConversationId: text("origin_conversation_id"),
+  originMessageId: text("origin_message_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   completedAt: integer("completed_at", { mode: "timestamp" }),
 });

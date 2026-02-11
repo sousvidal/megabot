@@ -16,7 +16,7 @@ export default function ChatIndex() {
     // Generate a conversation ID client-side and navigate immediately.
     // The ChatWindow on the target page handles sending the first message.
     const conversationId = nanoid();
-    navigate(`/chat/${conversationId}`, {
+    void navigate(`/chat/${conversationId}`, {
       state: { initialMessage: text },
     });
   }

@@ -13,7 +13,7 @@ interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
   error: string | null;
-  scrollRef: React.RefObject<HTMLDivElement>;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function MessageList({

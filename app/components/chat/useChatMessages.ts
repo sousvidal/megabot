@@ -241,8 +241,8 @@ export function useChatMessages(conversationId: string) {
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Failed to send message");
+        const err = (await response.json()) as { error?: string };
+        throw new Error(err.error ?? "Failed to send message");
       }
 
       const reader = response.body?.getReader();

@@ -5,10 +5,10 @@ import { eq, like } from "drizzle-orm";
 
 const MEMORY_PREFIX = "memory:";
 
-async function executeMemoryStore(
+function executeMemoryStore(
   db: AppDatabase,
   params: Record<string, unknown>
-): Promise<ToolResult> {
+): ToolResult {
   const { key, value } = params as { key: string; value: string };
   const fullKey = `${MEMORY_PREFIX}${key}`;
 
@@ -24,10 +24,10 @@ async function executeMemoryStore(
   };
 }
 
-async function executeMemoryRecall(
+function executeMemoryRecall(
   db: AppDatabase,
   params: Record<string, unknown>
-): Promise<ToolResult> {
+): ToolResult {
   const { query } = params as { query?: string };
 
   let rows;
@@ -96,7 +96,7 @@ export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool 
       required: ["key", "value"],
     },
     permissions: "write",
-    execute: (params) => executeMemoryStore(db, params),
+    execute: (params) => executeMemoryStore(db, params as Record<string, unknown>),
   };
 
   const recall: Tool = {
@@ -115,7 +115,7 @@ export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool 
       required: [],
     },
     permissions: "read",
-    execute: (params) => executeMemoryRecall(db, params),
+    execute: (params) => executeMemoryRecall(db, params as Record<string, unknown>),
   };
 
   return { store, recall };

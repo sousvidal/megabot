@@ -65,7 +65,7 @@ export const runCommandTool: Tool = {
   },
   permissions: "read",
 
-  async execute(params) {
+  execute(params) {
     const { command } = params as { command: string };
 
     if (!command || command.trim().length === 0) {

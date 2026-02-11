@@ -9,7 +9,7 @@ import { Separator } from "~/components/ui/separator";
 import { Plus, MessageSquare } from "lucide-react";
 import { Sidebar } from "~/components/layout/Sidebar";
 
-export async function loader() {
+export function loader() {
   const server = getServer();
   const convos = server.db
     .select({

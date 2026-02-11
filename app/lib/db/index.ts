@@ -116,6 +116,19 @@ function pushSchema(sqlite: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_events_conversation ON events(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
   `);
+
+  // Safe column additions for existing databases
+  const safeAlter = (sql: string) => {
+    try {
+      sqlite.exec(sql);
+    } catch {
+      // Column already exists — ignore
+    }
+  };
+
+  safeAlter("ALTER TABLE conversations ADD COLUMN agent_id TEXT");
+  safeAlter("ALTER TABLE tasks ADD COLUMN origin_conversation_id TEXT");
+  safeAlter("ALTER TABLE tasks ADD COLUMN origin_message_id TEXT");
 }
 
 export { schema };

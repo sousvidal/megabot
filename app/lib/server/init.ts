@@ -10,6 +10,7 @@ import {
   webFetchTool,
   runCommandTool,
   createMemoryTools,
+  createAgentTools,
 } from "~/lib/tools";
 
 export interface MegaBotServer {
@@ -21,7 +22,6 @@ export interface MegaBotServer {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __megabot: MegaBotServer | undefined;
 }
 
@@ -53,6 +53,14 @@ export function getServer(): MegaBotServer {
     const { store, recall } = createMemoryTools(db);
     toolRegistry.register(store, "system");
     toolRegistry.register(recall, "system");
+
+    const { createAgent, listAgents, spawnAgent } = createAgentTools(
+      db,
+      toolRegistry
+    );
+    toolRegistry.register(createAgent, "system");
+    toolRegistry.register(listAgents, "system");
+    toolRegistry.register(spawnAgent, "system");
 
     const modelRouter = new ModelRouter(pluginRegistry);
 

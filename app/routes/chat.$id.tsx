@@ -7,7 +7,7 @@ import type { Route } from "./+types/chat.$id";
 import type { StreamPart } from "~/components/chat/MessageBubble";
 import type { ContentBlock, ToolResultBlock } from "~/lib/types";
 
-export async function loader({ params }: Route.LoaderArgs) {
+export function loader({ params }: Route.LoaderArgs) {
   const server = getServer();
   const conversationId = params.id;
 
@@ -56,7 +56,8 @@ function buildDisplayMessages(
   }> = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!;
+    const row = rows[i];
+    if (!row) continue;
 
     // Skip tool-result messages — they get merged into the preceding assistant message
     if (row.role === "tool") continue;
@@ -148,7 +149,9 @@ export default function ChatConversation() {
       conversationId={conversationId}
       initialMessages={displayMessages}
       initialMessage={initialMessage}
-      onStreamComplete={() => revalidator.revalidate()}
+      onStreamComplete={() => {
+        void revalidator.revalidate();
+      }}
     />
   );
 }

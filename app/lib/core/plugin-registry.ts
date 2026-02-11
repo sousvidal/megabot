@@ -23,7 +23,7 @@ export class PluginRegistry {
   unregister(id: string): boolean {
     const plugin = this.plugins.get(id);
     if (plugin?.shutdown) {
-      plugin.shutdown();
+      void plugin.shutdown();
     }
     return this.plugins.delete(id);
   }

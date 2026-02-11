@@ -52,7 +52,10 @@ export class ModelRouter {
     }
 
     // 3. Fallback: first model from first plugin
-    const fallbackPlugin = llmPlugins[0]!;
+    const fallbackPlugin = llmPlugins[0];
+    if (!fallbackPlugin) {
+      throw new Error("No LLM plugins registered");
+    }
     const fallbackModel = fallbackPlugin.models[0];
     if (!fallbackModel) {
       throw new Error(`LLM plugin "${fallbackPlugin.id}" has no models registered`);

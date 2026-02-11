@@ -1,4 +1,4 @@
-import type { LLMMessage, ContentBlock, TextBlock } from "~/lib/types";
+import type { LLMMessage } from "~/lib/types";
 
 /** Safely parse tool call arguments. Returns {} for empty/invalid input. */
 export function safeParseArgs(raw: string): Record<string, unknown> {
@@ -37,7 +37,8 @@ export function truncateHistory(
   const kept: LLMMessage[] = [];
   let chars = 0;
   for (let i = msgs.length - 1; i >= 0; i--) {
-    const msg = msgs[i]!;
+    const msg = msgs[i];
+    if (!msg) continue;
     const len = charLen(msg);
     if (chars + len > maxChars && kept.length > 0) {
       break;
@@ -47,7 +48,8 @@ export function truncateHistory(
   }
 
   // Ensure the first message is a user message (Anthropic requires this)
-  while (kept.length > 0 && kept[0]!.role !== "user") {
+  const firstMsg = kept[0];
+  while (kept.length > 0 && firstMsg && firstMsg.role !== "user") {
     kept.shift();
   }
 

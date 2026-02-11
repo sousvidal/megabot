@@ -17,7 +17,7 @@ export const getCurrentTimeTool: Tool = {
   },
   permissions: "none",
 
-  async execute(params) {
+  execute(params) {
     const { timezone } = params as { timezone?: string };
 
     const now = new Date();

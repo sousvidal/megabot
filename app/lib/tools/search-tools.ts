@@ -23,7 +23,7 @@ export function createSearchToolsTool(registry: ToolRegistry): Tool {
     },
     permissions: "none",
 
-    async execute(params) {
+    execute(params) {
       const { query } = params as { query: string };
 
       const results = registry.search(query);

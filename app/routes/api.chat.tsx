@@ -7,11 +7,11 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const body = await request.json();
-  const { conversationId, message } = body as {
+  const body = (await request.json()) as {
     conversationId?: string;
     message?: string;
   };
+  const { conversationId, message } = body;
 
   if (!message || typeof message !== "string" || message.trim().length === 0) {
     return Response.json({ error: "Message is required" }, { status: 400 });
@@ -38,7 +38,7 @@ export async function action({ request }: Route.ActionArgs) {
   );
 
   try {
-    const { conversationId: convId, stream } = await chatHandler.handle({
+    const { conversationId: convId, stream } = chatHandler.handle({
       conversationId,
       message: message.trim(),
     });
