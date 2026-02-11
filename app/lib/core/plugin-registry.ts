@@ -1,10 +1,9 @@
+import type { Plugin, LLMPlugin } from "~/lib/types";
 import type {
-  Plugin,
   PluginType,
-  LLMPlugin,
   CommPlugin,
   ToolPlugin,
-} from "~/lib/types";
+} from "~/lib/types/plugin";
 
 export class PluginRegistry {
   private plugins = new Map<string, Plugin>();

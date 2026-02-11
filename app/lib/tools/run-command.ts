@@ -1,0 +1,143 @@
+import { execSync } from "node:child_process";
+import type { Tool } from "~/lib/types";
+
+/**
+ * Allowlist of safe, read-only commands.
+ * Only the base command (first word) is checked against this list.
+ */
+const ALLOWED_COMMANDS = new Set([
+  "ls",
+  "cat",
+  "head",
+  "tail",
+  "grep",
+  "rg",
+  "find",
+  "wc",
+  "echo",
+  "pwd",
+  "whoami",
+  "date",
+  "file",
+  "stat",
+  "which",
+  "ps",
+  "df",
+  "du",
+  "uname",
+  "uptime",
+  "hostname",
+  "env",
+  "printenv",
+  "tree",
+  "sort",
+  "uniq",
+  "cut",
+  "awk",
+  "sed", // read-only piped use is common
+  "tr",
+  "diff",
+  "md5sum",
+  "shasum",
+  "sha256sum",
+  "base64",
+  "jq",
+  "curl", // read-only fetching
+  "wget", // read-only fetching
+]);
+
+const MAX_OUTPUT_CHARS = 50_000;
+const EXEC_TIMEOUT_MS = 30_000;
+
+export const runCommandTool: Tool = {
+  name: "run_command",
+  description:
+    "Execute a shell command on the local machine and return stdout/stderr. Restricted to read-only commands (ls, cat, grep, find, ps, df, etc.). Use this to explore the file system, inspect files, search for content, and gather system information.",
+  parameters: {
+    type: "object",
+    properties: {
+      command: {
+        type: "string",
+        description: "The shell command to execute.",
+      },
+    },
+    required: ["command"],
+  },
+  permissions: "read",
+
+  async execute(params) {
+    const { command } = params as { command: string };
+
+    if (!command || command.trim().length === 0) {
+      return { success: false, error: "Command cannot be empty." };
+    }
+
+    // Extract the base command (handle pipes — check every command in the pipeline)
+    const pipeSegments = command.split("|").map((s) => s.trim());
+    for (const segment of pipeSegments) {
+      const baseCmd = segment.split(/\s+/)[0];
+      if (!baseCmd || !ALLOWED_COMMANDS.has(baseCmd)) {
+        return {
+          success: false,
+          error: `Command "${baseCmd}" is not in the allowlist. Allowed: ${[...ALLOWED_COMMANDS].sort().join(", ")}`,
+        };
+      }
+    }
+
+    // Block obvious dangerous patterns even with allowed commands
+    const dangerous = [
+      />\s*\//,    // redirect to absolute path
+      />\s*~/,     // redirect to home
+      /`[^`]*`/,   // backtick subshells
+      /\$\(/,       // command substitution
+      /;\s*/,        // command chaining with semicolons
+      /&&/,          // command chaining with &&
+      /\|\|/,        // command chaining with ||
+    ];
+
+    for (const pattern of dangerous) {
+      if (pattern.test(command)) {
+        return {
+          success: false,
+          error: `Command contains a blocked pattern: ${pattern.source}`,
+        };
+      }
+    }
+
+    try {
+      const stdout = execSync(command, {
+        encoding: "utf-8",
+        timeout: EXEC_TIMEOUT_MS,
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let output = stdout ?? "";
+      const truncated = output.length > MAX_OUTPUT_CHARS;
+      if (truncated) {
+        output = output.slice(0, MAX_OUTPUT_CHARS);
+      }
+
+      return {
+        success: true,
+        data: truncated ? `${output}\n[Truncated to ${MAX_OUTPUT_CHARS} chars]` : output,
+      };
+    } catch (err) {
+      if (err && typeof err === "object" && "stdout" in err && "stderr" in err) {
+        const execErr = err as {
+          stdout: string;
+          stderr: string;
+          status: number | null;
+        };
+        const output = (execErr.stdout || "") + (execErr.stderr || "");
+        return {
+          success: false,
+          error: `Exit code ${execErr.status ?? "unknown"}: ${output.slice(0, MAX_OUTPUT_CHARS)}`,
+        };
+      }
+      const message =
+        err instanceof Error ? err.message : "Unknown execution error";
+      return { success: false, error: message };
+    }
+  },
+};

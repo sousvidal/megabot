@@ -4,6 +4,13 @@ import { ToolRegistry } from "~/lib/core/tool-registry";
 import { ModelRouter } from "~/lib/core/model-router";
 import { EventBus } from "~/lib/core/event-bus";
 import { createAnthropicPlugin } from "~/lib/plugins/anthropic";
+import {
+  getCurrentTimeTool,
+  createSearchToolsTool,
+  webFetchTool,
+  runCommandTool,
+  createMemoryTools,
+} from "~/lib/tools";
 
 export interface MegaBotServer {
   db: AppDatabase;
@@ -36,6 +43,16 @@ export function getServer(): MegaBotServer {
     if (anthropicKey) {
       pluginRegistry.register(createAnthropicPlugin(anthropicKey));
     }
+
+    // Register tools
+    toolRegistry.register(getCurrentTimeTool, "system");
+    toolRegistry.register(createSearchToolsTool(toolRegistry), "system");
+    toolRegistry.register(webFetchTool, "system");
+    toolRegistry.register(runCommandTool, "system");
+
+    const { store, recall } = createMemoryTools(db);
+    toolRegistry.register(store, "system");
+    toolRegistry.register(recall, "system");
 
     const modelRouter = new ModelRouter(pluginRegistry);
 

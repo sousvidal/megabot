@@ -33,7 +33,8 @@ export async function action({ request }: Route.ActionArgs) {
   const chatHandler = new ChatHandler(
     server.db,
     server.modelRouter,
-    server.eventBus
+    server.eventBus,
+    server.toolRegistry
   );
 
   try {

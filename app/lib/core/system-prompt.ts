@@ -10,10 +10,17 @@ export function getSystemPrompt(context?: SystemPromptContext): string {
     return context.agentPrompt;
   }
 
-  const toolSection =
-    context?.tools && context.tools.length > 0
-      ? `\n\nYou have access to the following tools: ${context.tools.join(", ")}. Use them when appropriate to fulfill the user's request.`
-      : "";
+  const hasTools = context?.tools && context.tools.length > 0;
+
+  const toolSection = hasTools
+    ? `
+
+You have tools available to help you accomplish tasks. You always have access to: ${context!.tools!.join(", ")}.
+
+When the user asks you to do something that might require a capability you don't see — like fetching a webpage, running a command, or storing information — use the search_tools tool to discover what's available. Don't say you can't do something without checking first.
+
+Use tools proactively. If the user asks what time it is, use get_current_time. If a task could benefit from a tool, use it rather than guessing.`
+    : "";
 
   return `You are MegaBot, a capable and helpful AI personal assistant.
 

@@ -33,6 +33,7 @@
 - Always review the diff before suggesting commit messages
 - Follow conventional commit format if established in the repository
 - If there are multiple (unrelated) features in one commit, consider splitting it up into several commits
+- **NEVER** bypass git hooks, address the issues or ask the user for input
 
 ### Code Quality
 - Review all code changes at task completion for:
