@@ -7,6 +7,7 @@ export const webFetchTool: Tool = {
   name: "web_fetch",
   description:
     "Fetch the content of a URL and return the response body as text. Useful for reading web pages, public APIs, JSON endpoints, or downloading text content. Returns the raw response body truncated to a maximum length.",
+  keywords: ["url", "website", "http", "download", "api", "webpage", "internet", "browse"],
   parameters: {
     type: "object",
     properties: {

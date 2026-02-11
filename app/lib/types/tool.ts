@@ -16,6 +16,7 @@ export interface ToolResult {
 export interface Tool {
   name: string;
   description: string;
+  keywords?: string[];
   parameters: Record<string, unknown>; // JSON Schema
   execute: (params: unknown, context: ToolContext) => Promise<ToolResult> | ToolResult;
   permissions: PermissionLevel;

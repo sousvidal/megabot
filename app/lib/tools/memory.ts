@@ -80,6 +80,7 @@ export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool 
     name: "memory_store",
     description:
       "Store a piece of information for later recall. Use this to remember facts, user preferences, important details, or anything that should persist across conversations. Keys should be descriptive (e.g. 'user_favorite_color', 'project_deadline').",
+    keywords: ["remember", "note", "save", "knowledge", "fact", "persist", "preference"],
     parameters: {
       type: "object",
       properties: {
@@ -103,6 +104,7 @@ export function createMemoryTools(db: AppDatabase): { store: Tool; recall: Tool 
     name: "memory_recall",
     description:
       "Search stored memories by keyword. Returns all memories whose key matches the query. Use this to recall previously stored information like user preferences, names, dates, or facts.",
+    keywords: ["remember", "note", "lookup", "knowledge", "fact", "preference", "retrieve"],
     parameters: {
       type: "object",
       properties: {

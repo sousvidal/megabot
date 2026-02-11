@@ -23,16 +23,34 @@ export class ToolRegistry {
   }
 
   /**
-   * Search tools by query string. Matches against name and description.
-   * Simple substring matching for now — can be upgraded to fuzzy/semantic later.
+   * Search tools by query string. Matches against name, description, and keywords.
+   * Splits the query into individual words and scores tools by the number of
+   * matching words. Returns results sorted by relevance (most matches first).
    */
   search(query: string): Tool[] {
-    const q = query.toLowerCase();
-    return this.getAll().filter(
-      (tool) =>
-        tool.name.toLowerCase().includes(q) ||
-        tool.description.toLowerCase().includes(q)
-    );
+    const words = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
+
+    if (words.length === 0) return this.getAll();
+
+    const scored = this.getAll()
+      .map((tool) => {
+        const haystack = [
+          tool.name.toLowerCase(),
+          tool.description.toLowerCase(),
+          ...(tool.keywords ?? []).map((k) => k.toLowerCase()),
+        ].join(" ");
+
+        const hits = words.filter((w) => haystack.includes(w)).length;
+        return { tool, hits };
+      })
+      .filter(({ hits }) => hits > 0);
+
+    scored.sort((a, b) => b.hits - a.hits);
+
+    return scored.map(({ tool }) => tool);
   }
 
   async execute(

@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
 import type { Tool } from "~/lib/types";
 
 /**
@@ -53,6 +53,20 @@ export const runCommandTool: Tool = {
   name: "run_command",
   description:
     "Execute a shell command on the local machine and return stdout/stderr. Restricted to read-only commands (ls, cat, grep, find, ps, df, etc.). Use this to explore the file system, inspect files, search for content, and gather system information.",
+  keywords: [
+    "file",
+    "directory",
+    "folder",
+    "search",
+    "find",
+    "list",
+    "read",
+    "filesystem",
+    "path",
+    "document",
+    "terminal",
+    "shell",
+  ],
   parameters: {
     type: "object",
     properties: {
@@ -65,7 +79,7 @@ export const runCommandTool: Tool = {
   },
   permissions: "read",
 
-  execute(params) {
+  async execute(params) {
     const { command } = params as { command: string };
 
     if (!command || command.trim().length === 0) {
@@ -84,6 +98,9 @@ export const runCommandTool: Tool = {
       }
     }
 
+    // Strip safe stderr redirections before checking dangerous patterns
+    const sanitised = command.replace(/2>\s*\/dev\/null/g, "").replace(/2>&1/g, "");
+
     // Block obvious dangerous patterns even with allowed commands
     const dangerous = [
       />\s*\//,    // redirect to absolute path
@@ -96,7 +113,7 @@ export const runCommandTool: Tool = {
     ];
 
     for (const pattern of dangerous) {
-      if (pattern.test(command)) {
+      if (pattern.test(sanitised)) {
         return {
           success: false,
           error: `Command contains a blocked pattern: ${pattern.source}`,
@@ -105,14 +122,32 @@ export const runCommandTool: Tool = {
     }
 
     try {
-      const stdout = execSync(command, {
-        encoding: "utf-8",
-        timeout: EXEC_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+      const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          exec(
+            command,
+            {
+              encoding: "utf-8",
+              timeout: EXEC_TIMEOUT_MS,
+              maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            },
+            (error, stdout, stderr) => {
+              if (error) {
+                reject(
+                  Object.assign(error, {
+                    stdout: stdout ?? "",
+                    stderr: stderr ?? "",
+                  })
+                );
+              } else {
+                resolve({ stdout: stdout ?? "", stderr: stderr ?? "" });
+              }
+            }
+          );
+        }
+      );
 
-      let output = stdout ?? "";
+      let output = stdout;
       const truncated = output.length > MAX_OUTPUT_CHARS;
       if (truncated) {
         output = output.slice(0, MAX_OUTPUT_CHARS);
@@ -129,7 +164,29 @@ export const runCommandTool: Tool = {
           stderr: string;
           status: number | null;
         };
-        const output = (execErr.stdout || "") + (execErr.stderr || "");
+        const stdout = execErr.stdout || "";
+        const stderr = execErr.stderr || "";
+
+        // If the command produced stdout, treat it as a partial success
+        // (e.g. `find` returning results but hitting permission-denied dirs)
+        if (stdout.trim().length > 0) {
+          let output = stdout;
+          const truncated = output.length > MAX_OUTPUT_CHARS;
+          if (truncated) {
+            output = output.slice(0, MAX_OUTPUT_CHARS);
+          }
+          const warning = stderr
+            ? `\n[Warning: exit code ${execErr.status ?? "unknown"}, some errors on stderr]`
+            : "";
+          return {
+            success: true,
+            data: truncated
+              ? `${output}\n[Truncated to ${MAX_OUTPUT_CHARS} chars]${warning}`
+              : `${output}${warning}`,
+          };
+        }
+
+        const output = stdout + stderr;
         return {
           success: false,
           error: `Exit code ${execErr.status ?? "unknown"}: ${output.slice(0, MAX_OUTPUT_CHARS)}`,
