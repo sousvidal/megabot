@@ -14,6 +14,15 @@ import { createWebFetchPlugin } from "~/lib/plugins/tool/web-fetch";
 import { createRunCommandPlugin } from "~/lib/plugins/tool/run-command";
 import { createMemoryPlugin } from "~/lib/plugins/tool/memory";
 import { createAgentsPlugin } from "~/lib/plugins/tool/agents";
+import { createFileManagerPlugin } from "~/lib/plugins/tool/file-manager";
+import { createWebSearchPlugin } from "~/lib/plugins/tool/web-search";
+import { createCodeRunnerPlugin } from "~/lib/plugins/tool/code-runner";
+import { createClipboardPlugin } from "~/lib/plugins/tool/clipboard";
+import { createNotificationsPlugin } from "~/lib/plugins/tool/notifications";
+import { createDesktopPlugin } from "~/lib/plugins/tool/desktop";
+import { createSystemInfoPlugin } from "~/lib/plugins/tool/system-info";
+import { createSchedulerPlugin } from "~/lib/plugins/tool/scheduler";
+import { createCalculatorPlugin } from "~/lib/plugins/tool/calculator";
 
 export interface MegaBotServer {
   db: AppDatabase;
@@ -58,6 +67,15 @@ export function getServer(): MegaBotServer {
     pluginRegistry.register(createRunCommandPlugin(logger));
     pluginRegistry.register(createMemoryPlugin(db, logger));
     pluginRegistry.register(createAgentsPlugin(db, toolRegistry, logger));
+    pluginRegistry.register(createFileManagerPlugin(logger));
+    pluginRegistry.register(createWebSearchPlugin(logger));
+    pluginRegistry.register(createCodeRunnerPlugin(logger));
+    pluginRegistry.register(createClipboardPlugin(logger));
+    pluginRegistry.register(createNotificationsPlugin(logger));
+    pluginRegistry.register(createDesktopPlugin(logger));
+    pluginRegistry.register(createSystemInfoPlugin(logger));
+    pluginRegistry.register(createSchedulerPlugin(db, logger));
+    pluginRegistry.register(createCalculatorPlugin(logger));
 
     logger.info(
       { toolCount: toolRegistry.getAll().length },

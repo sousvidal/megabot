@@ -87,6 +87,21 @@ export const events = sqliteTable("events", {
   timestamp: integer("timestamp", { mode: "timestamp" }).notNull(),
 });
 
+// --- Scheduled Tasks ---
+export const scheduledTasks = sqliteTable("scheduled_tasks", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  schedule: text("schedule").notNull(), // cron expression or ISO date
+  type: text("type", { enum: ["recurring", "one_shot"] }).notNull(),
+  agentId: text("agent_id"),
+  input: text("input").notNull(),
+  status: text("status", { enum: ["active", "paused", "completed"] }).notNull(),
+  lastRunAt: integer("last_run_at", { mode: "timestamp" }),
+  nextRunAt: integer("next_run_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
 // --- Config ---
 export const config = sqliteTable("config", {
   key: text("key").primaryKey(),

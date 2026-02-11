@@ -22,9 +22,17 @@ export const BASE_TOOL_NAMES = [
   "search_tools",
   "get_current_time",
   "run_command",
+  "read_file",
+  "write_file",
+  "list_directory",
+  "grep",
+  "calculate",
   "create_agent",
   "list_agents",
   "spawn_agent",
+  "create_scheduled_task",
+  "list_scheduled_tasks",
+  "delete_scheduled_task",
 ];
 
 export interface AgentRunParams {

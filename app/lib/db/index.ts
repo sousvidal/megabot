@@ -32,6 +32,12 @@ export function createDatabase(dbPath: string) {
  * This is a simple approach for dev; in production, use drizzle-kit migrations.
  */
 function pushSchema(sqlite: Database.Database) {
+  createCoreTables(sqlite);
+  createIndexes(sqlite);
+  migrateExistingColumns(sqlite);
+}
+
+function createCoreTables(sqlite: Database.Database) {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
@@ -106,17 +112,39 @@ function pushSchema(sqlite: Database.Database) {
       timestamp INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      schedule TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('recurring', 'one_shot')),
+      agent_id TEXT,
+      input TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('active', 'paused', 'completed')),
+      last_run_at INTEGER,
+      next_run_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS config (
       key TEXT PRIMARY KEY,
       value TEXT
     );
+  `);
+}
 
+function createIndexes(sqlite: Database.Database) {
+  sqlite.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
     CREATE INDEX IF NOT EXISTS idx_events_conversation ON events(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_status ON scheduled_tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run ON scheduled_tasks(next_run_at);
   `);
+}
 
+function migrateExistingColumns(sqlite: Database.Database) {
   // Safe column additions for existing databases
   const safeAlter = (sql: string) => {
     try {
