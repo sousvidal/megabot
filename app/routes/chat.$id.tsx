@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useLoaderData, useRevalidator, useLocation } from "react-router";
 import { eq, asc } from "drizzle-orm";
 import { getServer } from "~/lib/server/init";
@@ -28,7 +29,9 @@ export function loader({ params }: Route.LoaderArgs) {
         .all()
     : [];
 
-  return { conversationId, messages: msgs };
+  const isProcessing = server.chatStreamManager.isActive(conversationId);
+
+  return { conversationId, messages: msgs, isProcessing };
 }
 
 /**
@@ -133,22 +136,30 @@ function buildDisplayMessages(
 }
 
 export default function ChatConversation() {
-  const { conversationId, messages: rawMessages } =
+  const { conversationId, messages: rawMessages, isProcessing } =
     useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const location = useLocation();
 
-  // Pick up the initial message from navigation state (new conversation flow)
-  const initialMessage = (location.state as { initialMessage?: string })
-    ?.initialMessage;
+  // Pick up the initial message from navigation state (new conversation flow).
+  // Guard: only use it if the conversation has no messages yet (prevents
+  // re-sending on refresh — location.state persists across browser refreshes).
+  const initialMessage =
+    rawMessages.length === 0
+      ? (location.state as { initialMessage?: string })?.initialMessage
+      : undefined;
 
-  const displayMessages = buildDisplayMessages(rawMessages);
+  const displayMessages = useMemo(
+    () => buildDisplayMessages(rawMessages),
+    [rawMessages]
+  );
 
   return (
     <ChatWindow
       conversationId={conversationId}
       initialMessages={displayMessages}
       initialMessage={initialMessage}
+      isProcessing={isProcessing}
       onStreamComplete={() => {
         void revalidator.revalidate();
       }}
