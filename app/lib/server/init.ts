@@ -23,6 +23,7 @@ import { createDesktopPlugin } from "~/lib/plugins/tool/desktop";
 import { createSystemInfoPlugin } from "~/lib/plugins/tool/system-info";
 import { createSchedulerPlugin } from "~/lib/plugins/tool/scheduler";
 import { createCalculatorPlugin } from "~/lib/plugins/tool/calculator";
+import { createConversationsPlugin } from "~/lib/plugins/tool/conversations";
 
 export interface MegaBotServer {
   db: AppDatabase;
@@ -76,6 +77,7 @@ export function getServer(): MegaBotServer {
     pluginRegistry.register(createSystemInfoPlugin(logger));
     pluginRegistry.register(createSchedulerPlugin(db, logger));
     pluginRegistry.register(createCalculatorPlugin(logger));
+    pluginRegistry.register(createConversationsPlugin(db, logger));
 
     logger.info(
       { toolCount: toolRegistry.getAll().length },

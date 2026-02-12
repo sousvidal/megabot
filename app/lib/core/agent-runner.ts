@@ -33,6 +33,9 @@ export const BASE_TOOL_NAMES = [
   "create_scheduled_task",
   "list_scheduled_tasks",
   "delete_scheduled_task",
+  "send_notification",
+  "list_conversations",
+  "get_conversation_messages",
 ];
 
 export interface AgentRunParams {
