@@ -121,8 +121,13 @@ export const runAgent = inngest.createFunction(
 
       const runner = new AgentRunner(db, modelRouter, toolRegistry, eventBus);
 
+      const allTools = [...new Set([...BASE_TOOL_NAMES, ...setup.agentTools])];
+
       return runner.run({
-        systemPrompt: setup.agentPrompt,
+        systemPrompt: getSystemPrompt({
+          agentPrompt: setup.agentPrompt,
+          tools: allTools,
+        }),
         initialMessages: [{ role: "user", content: data.input }],
         tools: setup.agentTools,
         modelId: setup.agentModel,
