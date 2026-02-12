@@ -1,10 +1,55 @@
+import { nanoid } from "nanoid";
 import { eq, and, lte } from "drizzle-orm";
 import { inngest } from "../client";
 import { getServer } from "~/lib/server/init";
 import { AgentRunner, BASE_TOOL_NAMES } from "~/lib/core/agent-runner";
 import { getSystemPrompt } from "~/lib/core/system-prompt";
-import { scheduledTasks, agents } from "~/lib/db/schema";
+import {
+  scheduledTasks,
+  agents,
+  conversations,
+  messages,
+  tasks,
+} from "~/lib/db/schema";
 import { logger } from "~/lib/logger";
+
+// ---------------------------------------------------------------------------
+// Helper: create a conversation + seed message for a scheduled task run
+// ---------------------------------------------------------------------------
+
+function createScheduledConversation(
+  db: ReturnType<typeof getServer>["db"],
+  taskName: string,
+  input: string,
+  now: Date
+): { conversationId: string; messageId: string } {
+  const conversationId = nanoid();
+  db.insert(conversations)
+    .values({
+      id: conversationId,
+      title: `Scheduled: ${taskName}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+
+  const messageId = nanoid();
+  db.insert(messages)
+    .values({
+      id: messageId,
+      conversationId,
+      role: "user",
+      content: input,
+      createdAt: now,
+    })
+    .run();
+
+  return { conversationId, messageId };
+}
+
+// ---------------------------------------------------------------------------
+// runScheduler — cron that checks for due tasks every minute
+// ---------------------------------------------------------------------------
 
 /**
  * Inngest cron function that runs every minute.
@@ -67,16 +112,19 @@ export const runScheduler = inngest.createFunction(
               continue;
             }
 
-            // Dispatch as agent spawn
+            // Create a conversation so runAgent can deliver results back
+            const { conversationId, messageId } =
+              createScheduledConversation(db, task.name, task.input, now);
+
+            // Dispatch as agent spawn with valid origin IDs
             await inngest.send({
               name: "megabot/agent.spawn",
               data: {
                 agentId: task.agentId,
                 taskId: task.id,
                 input: task.input,
-                originConversationId: "",
-                originMessageId: "",
-                scheduledTaskId: task.id,
+                originConversationId: conversationId,
+                originMessageId: messageId,
               },
             });
           } else {
@@ -133,9 +181,19 @@ export const runScheduler = inngest.createFunction(
   }
 );
 
+// ---------------------------------------------------------------------------
+// runScheduledTask — executes a scheduled task with full agent capabilities
+// ---------------------------------------------------------------------------
+
 /**
  * Inngest function that handles scheduled tasks without a specific agent.
- * Runs the task input through the main bot's AgentRunner.
+ * Creates a conversation, runs the task through AgentRunner with full tool
+ * access, and notifies the user when done.
+ *
+ * Flow mirrors runAgent:
+ * 1. Setup: create conversation, seed message, create task record
+ * 2. Execute: run AgentRunner with conversationId, messageId, and tools
+ * 3. Notify: send desktop notification, update task record, emit events
  */
 export const runScheduledTask = inngest.createFunction(
   {
@@ -158,31 +216,143 @@ export const runScheduledTask = inngest.createFunction(
 
     log.info({ taskName: data.taskName }, "Running scheduled task");
 
-    await step.run("execute", async () => {
+    // --- Step 1: Setup ---
+    const setup = await step.run("setup", () => {
+      const { db, eventBus } = getServer();
+      const now = new Date();
+
+      // Create conversation and seed message
+      const { conversationId, messageId } = createScheduledConversation(
+        db,
+        data.taskName,
+        data.input,
+        now
+      );
+
+      // Create a task record for execution tracking
+      const taskId = nanoid();
+      db.insert(tasks)
+        .values({
+          id: taskId,
+          type: "scheduled",
+          status: "running",
+          input: JSON.stringify({
+            scheduledTaskId: data.scheduledTaskId,
+            taskName: data.taskName,
+            input: data.input,
+          }),
+          conversationId,
+          originConversationId: conversationId,
+          originMessageId: messageId,
+          createdAt: now,
+        })
+        .run();
+
+      eventBus.emit(
+        "scheduled-task.started",
+        "scheduler",
+        {
+          scheduledTaskId: data.scheduledTaskId,
+          taskName: data.taskName,
+          taskId,
+          conversationId,
+        },
+        { conversationId }
+      );
+
+      log.info(
+        { taskId, conversationId },
+        "Scheduled task setup complete"
+      );
+
+      return { conversationId, messageId, taskId };
+    });
+
+    // --- Step 2: Execute ---
+    const result = await step.run("execute", async () => {
       const { db, modelRouter, toolRegistry, eventBus } = getServer();
 
       const runner = new AgentRunner(db, modelRouter, toolRegistry, eventBus);
       const systemPrompt = getSystemPrompt({ tools: BASE_TOOL_NAMES });
 
-      const result = await runner.run({
+      return runner.run({
         systemPrompt,
         initialMessages: [
           {
             role: "user",
             content:
-              `[Scheduled Task: "${data.taskName}"]\n\n${data.input}\n\n` +
-              `[This task was triggered by the scheduler. Complete it and provide a summary of what was done.]`,
+              `[Scheduled Task: "${data.taskName}"]\n\n` +
+              `${data.input}\n\n` +
+              `[You are executing this task in the background. Use your tools to ACTUALLY PERFORM ` +
+              `the requested action. Do NOT just describe what you would do — use tools to do it. ` +
+              `If the task involves communicating with the user, use send_notification. ` +
+              `If you need context from previous conversations, use list_conversations and ` +
+              `get_conversation_messages.]`,
           },
         ],
         tools: [...BASE_TOOL_NAMES],
+        conversationId: setup.conversationId,
+        messageId: setup.messageId,
       });
+    });
 
-      log.info(
-        { toolCallCount: result.toolCallCount, textLength: result.text.length },
-        "Scheduled task completed"
+    log.info(
+      {
+        toolCallCount: result.toolCallCount,
+        textLength: result.text.length,
+        usage: result.usage,
+      },
+      "Scheduled task execution complete"
+    );
+
+    // --- Step 3: Notify and track ---
+    await step.run("notify", async () => {
+      const { db, toolRegistry, eventBus } = getServer();
+      const now = new Date();
+
+      // Send a guaranteed desktop notification
+      await toolRegistry.execute(
+        "send_notification",
+        {
+          title: `Scheduled: ${data.taskName}`,
+          message:
+            result.toolCallCount > 0
+              ? `Task completed with ${result.toolCallCount} action(s).`
+              : `Task completed.`,
+          sound: false,
+        },
+        {}
       );
 
-      return { text: result.text, toolCallCount: result.toolCallCount };
+      // Update the task record
+      db.update(tasks)
+        .set({
+          status: "completed",
+          result: JSON.stringify({
+            text: result.text,
+            toolCallCount: result.toolCallCount,
+            usage: result.usage,
+          }),
+          completedAt: now,
+        })
+        .where(eq(tasks.id, setup.taskId))
+        .run();
+
+      eventBus.emit(
+        "scheduled-task.completed",
+        "scheduler",
+        {
+          scheduledTaskId: data.scheduledTaskId,
+          taskName: data.taskName,
+          taskId: setup.taskId,
+          toolCallCount: result.toolCallCount,
+          textLength: result.text.length,
+        },
+        { conversationId: setup.conversationId }
+      );
     });
+
+    log.info("Scheduled task completed successfully");
+    return { taskId: setup.taskId, status: "completed" };
   }
 );
