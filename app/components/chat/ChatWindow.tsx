@@ -110,7 +110,7 @@ export function ChatWindow({
     error,
     setError,
     sendMessage: sendChatMessage,
-  } = useChatMessages(conversationId);
+  } = useChatMessages(conversationId, isProcessing);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const initialMessageSent = useRef(false);
@@ -159,7 +159,7 @@ export function ChatWindow({
         error={error}
         scrollRef={bottomRef}
       />
-      <ChatInput onSendMessage={handleSendMessage} isStreaming={isStreaming} />
+      <ChatInput onSendMessage={handleSendMessage} isStreaming={isStreaming || !!isProcessing} />
     </div>
   );
 }

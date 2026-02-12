@@ -21,6 +21,7 @@ export default [
 
   // API routes
   route("api/chat", "routes/api.chat.tsx"),
+  route("api/chat/:id/stream", "routes/api.chat.$id.stream.ts"),
   route("api/inngest", "routes/api.inngest.tsx"),
   route("api/notifications", "routes/api.notifications.ts"),
 ] satisfies RouteConfig;

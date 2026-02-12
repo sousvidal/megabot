@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { StreamPart } from "./MessageBubble";
 import type { ToolCallState } from "./ToolCallCard";
 
@@ -204,12 +204,113 @@ async function processStream(
   }
 }
 
-export function useChatMessages(conversationId: string) {
+/**
+ * Connect to an active SSE stream for reconnection after page refresh.
+ * Returns a cleanup function that closes the EventSource.
+ */
+function connectToStream(
+  conversationId: string,
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+  setIsStreaming: (streaming: boolean) => void,
+  setError: (error: string | null) => void
+): () => void {
+  const assistantId = `reconnect-${Date.now()}`;
+  const toolCallMap = new Map<string, ToolCallState>();
+  let closed = false;
+  let assistantMessageAdded = false;
+
+  setIsStreaming(true);
+
+  const eventSource = new EventSource(`/api/chat/${conversationId}/stream`);
+
+  const closeStream = () => {
+    if (!closed) {
+      closed = true;
+      eventSource.close();
+      setIsStreaming(false);
+    }
+  };
+
+  eventSource.onmessage = (event: MessageEvent) => {
+    if (closed) return;
+    const payload = event.data as string;
+
+    if (payload === "[DONE]") {
+      closeStream();
+      return;
+    }
+
+    try {
+      const chunk = JSON.parse(payload) as Record<string, unknown>;
+      const type = chunk.type as string;
+      if (type === "meta") return;
+
+      // Add the assistant message on the first real chunk so it
+      // doesn't race with useSyncInitialMessages
+      if (!assistantMessageAdded) {
+        assistantMessageAdded = true;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: "assistant" as const,
+            content: "",
+            createdAt: new Date(),
+            streamParts: [{ type: "text" as const, content: "" }],
+          },
+        ]);
+      }
+
+      const handler = CHUNK_HANDLERS[type];
+      if (handler) {
+        handler(chunk, {
+          assistantId,
+          setMessages,
+          setError: (e: string) => setError(e),
+          toolCallMap,
+        });
+      }
+
+      if (type === "done") {
+        closeStream();
+      }
+    } catch {
+      // Ignore parse errors (e.g. heartbeat comments)
+    }
+  };
+
+  eventSource.onerror = () => {
+    closeStream();
+  };
+
+  return closeStream;
+}
+
+export function useChatMessages(conversationId: string, isStreamActive?: boolean) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reconnectedRef = useRef(false);
+  const sentMessageRef = useRef(false);
+
+  // Reset reconnect state when conversation changes
+  useEffect(() => {
+    reconnectedRef.current = false;
+    sentMessageRef.current = false;
+  }, [conversationId]);
+
+  // Auto-reconnect to an active stream after page refresh
+  useEffect(() => {
+    const shouldSkip = !isStreamActive || reconnectedRef.current ||
+      sentMessageRef.current || messages.some((m) => m.id.startsWith("temp-assistant-"));
+    if (shouldSkip) return;
+    reconnectedRef.current = true;
+    return connectToStream(conversationId, setMessages, setIsStreaming, setError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, isStreamActive]);
 
   async function sendMessage(text: string, onComplete?: () => void) {
+    sentMessageRef.current = true;
     setError(null);
     setIsStreaming(true);
 
@@ -219,10 +320,7 @@ export function useChatMessages(conversationId: string) {
       content: text,
       createdAt: new Date(),
     };
-    setMessages((prev) => {
-      console.log("[sendMessage] Adding user msg, prev:", prev.length);
-      return [...prev, userMessage];
-    });
+    setMessages((prev) => [...prev, userMessage]);
 
     const assistantId = `temp-assistant-${Date.now()}`;
     const assistantMessage: Message = {
