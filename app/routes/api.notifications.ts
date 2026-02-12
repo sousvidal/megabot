@@ -34,7 +34,8 @@ export function loader({ request }: Route.LoaderArgs) {
           event.type !== "agent.completed" &&
           event.type !== "agent.error" &&
           event.type !== "agent.spawned" &&
-          event.type !== "chat.completed"
+          event.type !== "chat.completed" &&
+          event.type !== "conversation.created"
         ) {
           return;
         }

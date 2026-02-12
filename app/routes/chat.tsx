@@ -1,4 +1,5 @@
-import { Outlet, NavLink, useLoaderData } from "react-router";
+import { useEffect } from "react";
+import { Outlet, NavLink, useLoaderData, useRevalidator } from "react-router";
 import { desc } from "drizzle-orm";
 import { getServer } from "~/lib/server/init";
 import { conversations } from "~/lib/db/schema";
@@ -26,6 +27,35 @@ export function loader() {
 
 export default function ChatLayout() {
   const { conversations: convos } = useLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
+
+  // Revalidate the conversation list when new conversations are created
+  // (e.g. from spawned agents or other tabs).
+  useEffect(() => {
+    const eventSource = new EventSource("/api/notifications");
+
+    eventSource.onmessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data as string) as unknown;
+        if (
+          data &&
+          typeof data === "object" &&
+          "type" in data &&
+          typeof data.type === "string" &&
+          data.type === "conversation.created"
+        ) {
+          void revalidator.revalidate();
+        }
+      } catch {
+        // Ignore parse errors (e.g. heartbeat comments)
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">

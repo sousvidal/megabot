@@ -120,6 +120,13 @@ export class ChatHandler {
           updatedAt: now,
         })
         .run();
+
+      this.eventBus.emit(
+        "conversation.created",
+        "chat-handler",
+        { title: message.slice(0, 100) },
+        { conversationId }
+      );
     }
 
     const userMessageId = nanoid();

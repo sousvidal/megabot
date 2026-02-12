@@ -18,6 +18,7 @@ export type BotEventType =
   | "task.failed"
   | "task.retrying"
   | "chat.completed"
+  | "conversation.created"
   | "cron.triggered"
   | "cron.created"
   | "safety.check"

@@ -89,6 +89,13 @@ export const runAgent = inngest.createFunction(
         .run();
 
       eventBus.emit(
+        "conversation.created",
+        `agent:${agent.id}`,
+        { title: `Agent: ${agent.name}` },
+        { conversationId: agentConversationId, agentId: agent.id }
+      );
+
+      eventBus.emit(
         "agent.spawned",
         `agent:${agent.id}`,
         { agentName: agent.name, input: data.input, taskId: data.taskId },

@@ -11,6 +11,7 @@ import {
   messages,
   tasks,
 } from "~/lib/db/schema";
+import type { EventBus } from "~/lib/core/event-bus";
 import { logger } from "~/lib/logger";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,7 @@ import { logger } from "~/lib/logger";
 
 function createScheduledConversation(
   db: ReturnType<typeof getServer>["db"],
+  eventBus: EventBus,
   taskName: string,
   input: string,
   now: Date
@@ -32,6 +34,13 @@ function createScheduledConversation(
       updatedAt: now,
     })
     .run();
+
+  eventBus.emit(
+    "conversation.created",
+    "scheduler",
+    { title: `Scheduled: ${taskName}` },
+    { conversationId }
+  );
 
   const messageId = nanoid();
   db.insert(messages)
@@ -114,7 +123,7 @@ export const runScheduler = inngest.createFunction(
 
             // Create a conversation so runAgent can deliver results back
             const { conversationId, messageId } =
-              createScheduledConversation(db, task.name, task.input, now);
+              createScheduledConversation(db, eventBus, task.name, task.input, now);
 
             // Dispatch as agent spawn with valid origin IDs
             await inngest.send({
@@ -224,6 +233,7 @@ export const runScheduledTask = inngest.createFunction(
       // Create conversation and seed message
       const { conversationId, messageId } = createScheduledConversation(
         db,
+        eventBus,
         data.taskName,
         data.input,
         now
